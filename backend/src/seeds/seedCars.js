@@ -41,6 +41,32 @@ const cars = [
     cons: ['Engine feels underpowered', 'No automatic option', 'Missing ventilated seats'],
     image_url: null, is_available: true,
   },
+  {
+    brand: 'Tata', model: 'Altroz', variant: 'XZA+ CRDi Automatic', year: 2024,
+    price_ex_showroom: 975000, price_on_road: 1115000, body_type: 'hatchback',
+    fuel_type: 'diesel', transmission: 'automatic', engine_displacement: 1497,
+    max_power: '108 bhp @ 4000 rpm', max_torque: '260 Nm @ 1500-2750 rpm',
+    mileage_kmpl: 23.64, seating_capacity: 5, boot_space_litres: 345,
+    ground_clearance_mm: 165, safety_rating: 5,
+    key_features: ['touchscreen', 'android_auto', 'push_start', 'rear_camera', 'auto_headlights', 'alloy_wheels'],
+    colors_available: ['Harbour Blue', 'Opera Blue', 'Downtown Red'],
+    pros: ['Punchy diesel engine', 'Smooth automatic transmission', '5-star safety rating'],
+    cons: ['Slightly noisy cabin', 'Heavy steering'],
+    image_url: null, is_available: true,
+  },
+  {
+    brand: 'Hyundai', model: 'i20', variant: 'Asta (O) Diesel Automatic', year: 2024,
+    price_ex_showroom: 998000, price_on_road: 1145000, body_type: 'hatchback',
+    fuel_type: 'diesel', transmission: 'automatic', engine_displacement: 1493,
+    max_power: '99 bhp @ 4000 rpm', max_torque: '240 Nm @ 1500-2750 rpm',
+    mileage_kmpl: 21.40, seating_capacity: 5, boot_space_litres: 311,
+    ground_clearance_mm: 170, safety_rating: 3,
+    key_features: ['sunroof', 'touchscreen', 'android_auto', 'push_start', 'rear_camera', 'alloy_wheels'],
+    colors_available: ['Polar White', 'Fiery Red', 'Starry Night'],
+    pros: ['Excellent mileage', 'Loaded with tech', 'Smooth automatic'],
+    cons: ['Tight rear legroom', 'Firm suspension'],
+    image_url: null, is_available: true,
+  },
 
   // --- SEDANS ---
   {
@@ -374,18 +400,22 @@ const cars = [
 async function seedCars() {
   const carRepo = AppDataSource.getRepository('Car');
 
-  const existingCount = await carRepo.count();
-  if (existingCount > 0) {
-    console.log(`Cars already seeded (${existingCount} found). Skipping.`);
-    return;
-  }
-
+  console.log(`Checking and syncing car database seeds (${cars.length} defined)...`);
+  
+  let newlySeeded = 0;
   for (const car of cars) {
-    const entity = carRepo.create(car);
-    await carRepo.save(entity);
+    const existing = await carRepo.findOne({
+      where: { brand: car.brand, model: car.model, variant: car.variant },
+    });
+    if (!existing) {
+      const entity = carRepo.create(car);
+      await carRepo.save(entity);
+      newlySeeded++;
+      console.log(`Seeded new car: ${car.brand} ${car.model} ${car.variant}`);
+    }
   }
 
-  console.log(`✅ Seeded ${cars.length} cars.`);
+  console.log(`✅ Car seeding sync complete. Seeded ${newlySeeded} new car records.`);
 }
 
 module.exports = { seedCars };
