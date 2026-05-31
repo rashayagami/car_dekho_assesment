@@ -6,10 +6,10 @@ import './ChatMessage.css';
  * Single chat message bubble.
  * Renders text messages or a DynamicForm when message_type is 'form_request'.
  */
-const ChatMessage = memo(function ChatMessage({ message, onFormSubmit, isLast, isActiveForm }) {
+const ChatMessage = memo(function ChatMessage({ message, onFormSubmit, isLast }) {
   const isUser = message.role === 'user';
   const isFormRequest = message.message_type === 'form_request' && message.form_config;
-  const isFormActive = isFormRequest && isActiveForm;
+  const isFormActive = isFormRequest && message.is_active !== false;
 
   const handleFormSubmit = useCallback(
     (data) => {
