@@ -1,0 +1,139 @@
+.cw-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.cw-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-md);
+}
+
+.cw-messages-inner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  min-height: 100%;
+  justify-content: flex-end;
+}
+
+.cw-sentinel {
+  text-align: center;
+  padding: var(--space-sm);
+}
+
+.cw-loading-text {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+
+/* Status indicator */
+.cw-status-row {
+  display: flex;
+  justify-content: flex-start;
+  animation: fadeIn 0.2s ease;
+}
+
+.cw-status-bubble {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 4px var(--space-md) 4px 4px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  border-bottom-left-radius: 4px;
+}
+
+.cw-status-text {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+
+/* Error banner */
+.cw-error-row {
+  display: flex;
+  justify-content: center;
+  animation: fadeIn 0.2s ease;
+}
+
+.cw-error-bubble {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--radius-sm);
+}
+
+.cw-error-icon {
+  font-size: var(--font-size-md);
+}
+
+.cw-error-text {
+  font-size: var(--font-size-xs);
+  color: #f87171;
+}
+
+.cw-retry-btn {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: #fff;
+  background: rgba(239, 68, 68, 0.6);
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.cw-retry-btn:hover {
+  background: rgba(239, 68, 68, 0.8);
+}
+
+/* Input bar */
+.cw-input-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+}
+
+.cw-input {
+  flex: 1;
+  padding: 10px var(--space-md);
+  border-radius: var(--radius-full);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-medium);
+  font-size: var(--font-size-sm);
+}
+
+.cw-input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: none;
+}
+
+.cw-send-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.cw-send-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.cw-send-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

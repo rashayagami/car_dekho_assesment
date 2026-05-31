@@ -1,0 +1,45 @@
+services:
+  # ----------------------------------------------------
+  # Express Backend Web Service
+  # ----------------------------------------------------
+  - type: web
+    name: car-recommendation-backend
+    env: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: car-recommendation-db
+          property: connectionString
+      - key: GEMINI_API_KEY
+        sync: false # Render will prompt the user to input their Gemini API Key during deployment
+      - key: FRONTEND_URL
+        sync: false # Render will prompt the user to input the final frontend URL for CORS
+
+  # ----------------------------------------------------
+  # React Frontend Static Site
+  # ----------------------------------------------------
+  - type: web
+    name: car-recommendation-frontend
+    env: static
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    publishDir: dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://car-recommendation-backend.onrender.com/api
+
+# ------------------------------------------------------
+# PostgreSQL Database Service
+# ------------------------------------------------------
+databases:
+  - name: car-recommendation-db
+    plan: free
