@@ -308,11 +308,10 @@ async function handleToolCall(functionName, args, message, messages) {
       }
     }
 
-    const slimCars = cars.slice(0, 5).map((c) => ({
-      name: c.model || c.name || '', brand: c.brand, price: c.ex_showroom_price,
-      fuel: c.fuel_type, transmission: c.transmission, body: c.body_type,
-      mileage: c.mileage_kmpl, seating: c.seating_capacity,
-    }));
+    // Super-compact pipe-separated plain-text representation of cars to minimize Groq token usage dramatically
+    const compactCarsText = cars.slice(0, 5).map((c) => 
+      `${c.brand} ${c.model} (${c.body_type}): ₹${(Number(c.price_ex_showroom)/100000).toFixed(1)}L, ${c.fuel_type}, ${c.transmission}, ${c.mileage_kmpl || 'N/A'}kmpl, ${c.seating_capacity}str`
+    ).join(' | ');
 
     // Append tool interaction to history
     messages.push(message);
@@ -322,7 +321,7 @@ async function handleToolCall(functionName, args, message, messages) {
       name: 'search_cars',
       content: JSON.stringify({ 
         count: cars.length, 
-        cars: slimCars, 
+        list: compactCarsText, 
         note: originalFiltersExhausted ? "No cars matched the original tight filters, so search results were dynamically broadened to show the closest premium alternatives!" : null 
       }),
     });
