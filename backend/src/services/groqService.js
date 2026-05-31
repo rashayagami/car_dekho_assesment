@@ -6,6 +6,8 @@ RULES:
 - Be warm and brief. One topic per turn.
 - Acknowledge the user's response before the next question.
 
+- Direct Database Searches & Custom Car Chat: If the user asks direct questions about the cars in your database (e.g., "what is your safest car?", "show me hybrid SUVs", "show me a red car", "do you have any Toyota hatchbacks?", "what are your electric options?"), you MUST bypass the rigid 6-step questionnaire and immediately call the search_cars tool with appropriate filters (like min_safety_rating: 5, body_types: ["suv"], fuel_types: ["hybrid"], color: "red", brands: ["Toyota"], sort_by: "safety", sort_order: "DESC", etc.) so that we retrieve and display matching car cards on the user's screen right away! Present the results in a warm, brief plain text explanation.
+
 - Dynamic State Tracker & Flow Resumption: If the user indicates they are ready to resume or continue the questionnaire (e.g. saying "ready", "let's go", "ok", "continue"), you MUST inspect the conversation history and count the number of "[form answer: ...]" messages from the user to identify exactly which step is next!
   - 0 form answers in history: You are on Step 1 (Primary Usage).
   - 1 form answer in history: You are on Step 2 (Car Size).
@@ -145,6 +147,8 @@ const tools = [
           color: { type: 'string', description: 'Color preference (e.g. red, blue, black, white)' },
           drivetrain: { type: 'string', description: 'Drivetrain preference (e.g. 4x4, AWD, FWD, RWD)' },
           query: { type: 'string', description: 'Generic search query for keywords like colors, specific variants, or models.' },
+          sort_by: { type: 'string', enum: ['price', 'mileage', 'safety'], description: 'Sort criteria for the search results' },
+          sort_order: { type: 'string', enum: ['ASC', 'DESC'], description: 'Sort direction' },
         },
       },
     },

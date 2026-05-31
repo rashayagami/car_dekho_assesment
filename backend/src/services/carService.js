@@ -100,7 +100,15 @@ async function searchCars(criteria = {}) {
     });
   }
 
-  qb.orderBy('car.price_ex_showroom', 'ASC');
+  if (criteria.sort_by === 'mileage') {
+    qb.orderBy('car.mileage_kmpl', criteria.sort_order || 'DESC');
+  } else if (criteria.sort_by === 'safety') {
+    qb.orderBy('car.safety_rating', criteria.sort_order || 'DESC');
+  } else if (criteria.sort_by === 'price') {
+    qb.orderBy('car.price_ex_showroom', criteria.sort_order || 'ASC');
+  } else {
+    qb.orderBy('car.price_ex_showroom', 'ASC');
+  }
   qb.limit(20);
 
   const cars = await qb.getMany();
