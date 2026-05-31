@@ -24,10 +24,8 @@ services:
   # ----------------------------------------------------
   # React Frontend Static Site
   # ----------------------------------------------------
-  - type: web
+  - type: static
     name: car-recommendation-frontend
-    env: static
-    plan: free
     rootDir: frontend
     buildCommand: npm install && npm run build
     publishDir: dist
