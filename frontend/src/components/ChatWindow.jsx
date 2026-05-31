@@ -71,20 +71,32 @@ export default function ChatWindow({
     }
   }, [onSendText, isSending]);
 
+  const lastActiveFormMsgId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg.message_type === 'form_request' && msg.form_config && msg.is_active !== false) {
+        return msg.id;
+      }
+    }
+    return null;
+  }, [messages]);
+
   const memoizedMessages = useMemo(
     () =>
       messages.map((msg, index) => {
         const isLast = index === messages.length - 1;
+        const isActiveForm = msg.id === lastActiveFormMsgId;
         return (
           <ChatMessage
             key={msg.id}
             message={msg}
             onFormSubmit={onFormSubmit}
             isLast={isLast}
+            isActiveForm={isActiveForm}
           />
         );
       }),
-    [messages, onFormSubmit]
+    [messages, onFormSubmit, lastActiveFormMsgId]
   );
 
   return (
