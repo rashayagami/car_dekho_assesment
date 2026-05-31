@@ -142,6 +142,9 @@ const tools = [
           min_seating: { type: 'number' },
           brands: { type: 'array', items: { type: 'string' } },
           features: { type: 'array', items: { type: 'string' } },
+          color: { type: 'string', description: 'Color preference (e.g. red, blue, black, white)' },
+          drivetrain: { type: 'string', description: 'Drivetrain preference (e.g. 4x4, AWD, FWD, RWD)' },
+          query: { type: 'string', description: 'Generic search query for keywords like colors, specific variants, or models.' },
         },
       },
     },
@@ -269,10 +272,44 @@ async function handleToolCall(functionName, args, message, messages) {
   // Handle car search
   if (functionName === 'search_cars') {
     const carService = require('./carService');
-    const cars = await carService.searchCars(args);
+    let cars = await carService.searchCars(args);
+    let originalFiltersExhausted = false;
+
+    // Dynamic, self-healing search broadening to ensure we ALWAYS have cars to show the user!
+    if (cars.length === 0) {
+      console.log('Zero cars matched original criteria. Broadening search...');
+      originalFiltersExhausted = true;
+      const broadArgs = { ...args };
+      
+      // Step 1: Remove highly specific constraints (features, color, drivetrain, and query)
+      if (broadArgs.features || broadArgs.color || broadArgs.drivetrain || broadArgs.query) {
+        delete broadArgs.features;
+        delete broadArgs.color;
+        delete broadArgs.drivetrain;
+        delete broadArgs.query;
+        cars = await carService.searchCars(broadArgs);
+      }
+      
+      // Step 2: If still empty, remove fuel type constraint
+      if (cars.length === 0 && broadArgs.fuel_types) {
+        delete broadArgs.fuel_types;
+        cars = await carService.searchCars(broadArgs);
+      }
+
+      // Step 3: If still empty, remove transmission constraint
+      if (cars.length === 0 && broadArgs.transmissions) {
+        delete broadArgs.transmissions;
+        cars = await carService.searchCars(broadArgs);
+      }
+
+      // Step 4: If still empty, search with zero constraints to show the general premium fleet!
+      if (cars.length === 0) {
+        cars = await carService.searchCars({});
+      }
+    }
 
     const slimCars = cars.slice(0, 5).map((c) => ({
-      name: c.name, brand: c.brand, price: c.ex_showroom_price,
+      name: c.model || c.name || '', brand: c.brand, price: c.ex_showroom_price,
       fuel: c.fuel_type, transmission: c.transmission, body: c.body_type,
       mileage: c.mileage_kmpl, seating: c.seating_capacity,
     }));
@@ -283,7 +320,11 @@ async function handleToolCall(functionName, args, message, messages) {
       role: 'tool',
       tool_call_id: message.tool_calls?.[0]?.id || 'call_fake_search_' + Date.now(),
       name: 'search_cars',
-      content: JSON.stringify({ count: cars.length, cars: slimCars }),
+      content: JSON.stringify({ 
+        count: cars.length, 
+        cars: slimCars, 
+        note: originalFiltersExhausted ? "No cars matched the original tight filters, so search results were dynamically broadened to show the closest premium alternatives!" : null 
+      }),
     });
 
     const followUpJson = await callGroqAPI(messages, tools);

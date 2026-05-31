@@ -11,14 +11,18 @@ async function searchCars(criteria = {}) {
   qb.where('car.is_available = :available', { available: true });
 
   if (criteria.min_price) {
+    // If min_price is in Lakhs (e.g. 5), convert to actual Rupees (500000)
+    const minPriceVal = criteria.min_price < 1000 ? criteria.min_price * 100000 : criteria.min_price;
     qb.andWhere('car.price_ex_showroom >= :minPrice', {
-      minPrice: criteria.min_price,
+      minPrice: minPriceVal,
     });
   }
 
   if (criteria.max_price) {
+    // If max_price is in Lakhs (e.g. 15), convert to actual Rupees (1500000)
+    const maxPriceVal = criteria.max_price < 1000 ? criteria.max_price * 100000 : criteria.max_price;
     qb.andWhere('car.price_ex_showroom <= :maxPrice', {
-      maxPrice: criteria.max_price,
+      maxPrice: maxPriceVal,
     });
   }
 
@@ -60,6 +64,28 @@ async function searchCars(criteria = {}) {
         [`feature_${i}`]: JSON.stringify([criteria.features[i]]),
       });
     }
+  }
+
+  if (criteria.color) {
+    const colorSearch = `%${criteria.color.toLowerCase()}%`;
+    qb.andWhere('LOWER(car.colors_available::text) LIKE :colorSearch', {
+      colorSearch,
+    });
+  }
+
+  if (criteria.drivetrain) {
+    const dtSearch = `%${criteria.drivetrain.toLowerCase()}%`;
+    qb.andWhere('(LOWER(car.variant) LIKE :dtSearch OR LOWER(car.key_features::text) LIKE :dtSearch)', {
+      dtSearch,
+    });
+  }
+
+  if (criteria.query) {
+    const q = `%${criteria.query.toLowerCase()}%`;
+    qb.andWhere(
+      '(LOWER(car.brand) LIKE :q OR LOWER(car.model) LIKE :q OR LOWER(car.variant) LIKE :q OR LOWER(car.key_features::text) LIKE :q OR LOWER(car.colors_available::text) LIKE :q)',
+      { q }
+    );
   }
 
   if (criteria.min_safety_rating) {
