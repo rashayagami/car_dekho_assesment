@@ -19,7 +19,7 @@ services:
       - key: GEMINI_API_KEY
         sync: false # Render will prompt the user to input their Gemini API Key during deployment
       - key: FRONTEND_URL
-        sync: false # Render will prompt the user to input the final frontend URL for CORS
+        value: https://car-recommendation-frontend-2mdk.onrender.com
 
   # ----------------------------------------------------
   # React Frontend Static Site
@@ -32,4 +32,4 @@ services:
     staticPublishPath: dist
     envVars:
       - key: VITE_API_URL
-        value: https://car-recommendation-backend.onrender.com/api
+        value: https://car-recommendation-backend-s9oc.onrender.com/api
