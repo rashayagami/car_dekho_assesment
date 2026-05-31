@@ -17,7 +17,7 @@ services:
       - key: DATABASE_URL
         value: postgresql://car_dekho:ktSMNBQmzvEBcYKef53A5QABvyRNP5g0@dpg-d8dj7828qa3s739p0460-a.singapore-postgres.render.com/car_dekho
       - key: GROQ_API_KEY
-        sync: false # Render will prompt you for your Groq API Key securely during deployment
+        value: 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
       - key: GROQ_MODEL
         value: openai/gpt-oss-120b
       - key: FRONTEND_URL
