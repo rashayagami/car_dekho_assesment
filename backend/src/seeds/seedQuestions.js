@@ -415,18 +415,22 @@ const questions = [
 async function seedQuestions() {
   const questionRepo = AppDataSource.getRepository('Question');
 
-  const existingCount = await questionRepo.count();
-  if (existingCount > 0) {
-    console.log(`Questions already seeded (${existingCount} found). Skipping.`);
-    return;
-  }
-
+  console.log(`Checking and syncing questionnaire seeds (${questions.length} defined)...`);
+  
+  let newlySeeded = 0;
   for (const q of questions) {
-    const entity = questionRepo.create(q);
-    await questionRepo.save(entity);
+    const existing = await questionRepo.findOne({
+      where: { purpose: q.purpose, form_component_type: q.form_component_type },
+    });
+    if (!existing) {
+      const entity = questionRepo.create(q);
+      await questionRepo.save(entity);
+      newlySeeded++;
+      console.log(`Seeded new question: ${q.title} (${q.purpose})`);
+    }
   }
 
-  console.log(`✅ Seeded ${questions.length} questions.`);
+  console.log(`✅ Questionnaire seeding sync complete. Seeded ${newlySeeded} new question records.`);
 }
 
 module.exports = { seedQuestions };
