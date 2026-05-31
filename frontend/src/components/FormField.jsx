@@ -388,11 +388,24 @@ const FormField = memo(function FormField({ field, disabled, showLabel = true, p
 
   // Build validation rules from config
   const rules = {};
+  
+  // Make standard form inputs required by default to prevent empty submissions
+  const defaultRequired = ['chip_select', 'chip_multi_select', 'select', 'radio', 'text', 'number'].includes(field.type);
+  const isExplicitlyOptional = field.validation && field.validation.required === false;
+  
+  if (defaultRequired && !isExplicitlyOptional) {
+    rules.required = 'Please make a selection or enter a value to continue';
+  }
+
   if (field.validation) {
-    if (field.validation.required) {
-      rules.required = typeof field.validation.required === 'string'
-        ? field.validation.required
-        : 'This field is required';
+    if (field.validation.required !== undefined) {
+      if (field.validation.required) {
+        rules.required = typeof field.validation.required === 'string'
+          ? field.validation.required
+          : 'This field is required';
+      } else {
+        delete rules.required;
+      }
     }
     if (field.validation.min) {
       rules.min = field.validation.min;
