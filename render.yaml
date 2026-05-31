@@ -16,8 +16,10 @@ services:
         value: 10000
       - key: DATABASE_URL
         value: postgresql://car_dekho:ktSMNBQmzvEBcYKef53A5QABvyRNP5g0@dpg-d8dj7828qa3s739p0460-a.singapore-postgres.render.com/car_dekho
-      - key: GEMINI_API_KEY
-        sync: false # Render will prompt the user to input their Gemini API Key during deployment
+      - key: GROQ_API_KEY
+        sync: false # Render will prompt you for your Groq API Key securely during deployment
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
       - key: FRONTEND_URL
         value: https://car-recommendation-frontend-2mdk.onrender.com
 

@@ -1,5 +1,5 @@
 const { AppDataSource } = require('../config/data-source');
-const { processMessage, summarizeConversation } = require('../services/geminiService');
+const { processMessage, summarizeConversation } = require('../services/groqService');
 
 /**
  * GET /api/sessions/:id/messages

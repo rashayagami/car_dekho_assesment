@@ -1,0 +1,339 @@
+const { AppDataSource } = require('../config/data-source');
+
+const SYSTEM_PROMPT = `You are a friendly AI car consultant for the Indian automobile market.
+
+RULES:
+- Be warm and brief. One topic per turn.
+- Acknowledge the user's response before the next question.
+
+WHEN TO USE FORMS vs PLAIN TEXT:
+- Use request_user_input when the question has choices or needs structured data.
+- Use plain text for open-ended chat, follow-ups, and final recommendations.
+
+AVAILABLE COMPONENTS (via request_user_input):
+chip_select, chip_multi_select, budget_range, number_input, text_input, card_carousel, search_select, rating_select
+
+FLOW:
+1. Greet + request_user_input(chip_select, usage options: Daily Commute, Family Trips, Long Drives, Off-Road)
+2. Acknowledge + request_user_input(chip_select, car size: Compact/Hatchback, Sedan, SUV, MUV)
+3. request_user_input(budget_range)
+4. request_user_input(chip_select, fuel: Petrol, Diesel, Electric, Hybrid, CNG)
+5. request_user_input(chip_select, transmission: Manual, Automatic, No Preference)
+6. request_user_input(chip_multi_select, features: Sunroof, Rear Camera, Touchscreen, Cruise Control, Alloy Wheels, Push Start, Ventilated Seats)
+7. search_cars then recommend in plain text.`;
+
+/**
+ * Build a form config from a DB question record.
+ * Merges the LLM-provided label/description/options with the stored config_json.
+ */
+function buildFormFromQuestion(question, llmLabel, llmDescription, llmOptions) {
+  const config = { ...question.config_json };
+
+  if (llmLabel) config.label = llmLabel;
+  if (llmDescription) config.description = llmDescription;
+
+  if (llmOptions.length > 0 && config.fields?.[0]) {
+    config.fields[0].options = llmOptions.map((o) => ({
+      value: o.toLowerCase().replace(/\s+/g, '_'),
+      label: o,
+    }));
+  }
+
+  config.form_component_type = question.form_component_type;
+  config.purpose = question.purpose;
+  config.submit_button_text = config.submitButtonText || config.submit_button_text || 'Next';
+
+  return config;
+}
+
+/**
+ * Minimal fallback builders for component types not in the DB.
+ */
+const FALLBACK_BUILDERS = {
+  chip_select: (label, desc, opts) => ({
+    label, description: desc, submit_button_text: 'Next',
+    form_component_type: 'chip_select', purpose: 'chip_select',
+    fields: [{ name: 'selection', label, type: 'chip_select', options: opts.map((o) => ({ value: o.toLowerCase().replace(/\s+/g, '_'), label: o })) }],
+  }),
+  chip_multi_select: (label, desc, opts) => ({
+    label, description: desc, submit_button_text: 'Next',
+    form_component_type: 'chip_multi_select', purpose: 'chip_multi_select',
+    fields: [{ name: 'selections', label, type: 'chip_select', multiple: true, options: opts.map((o) => ({ value: o.toLowerCase().replace(/\s+/g, '_'), label: o })) }],
+  }),
+  budget_range: (label, desc) => ({
+    label, description: desc, submit_button_text: 'Next',
+    form_component_type: 'budget_range', purpose: 'budget_range',
+    fields: [
+      { name: 'min_budget', label: 'Minimum (₹ Lakhs)', type: 'number', placeholder: 'e.g. 5' },
+      { name: 'max_budget', label: 'Maximum (₹ Lakhs)', type: 'number', placeholder: 'e.g. 15' },
+    ],
+  }),
+  text_input: (label, desc) => ({
+    label, description: desc, submit_button_text: 'Next',
+    form_component_type: 'text_input', purpose: 'text_input',
+    fields: [{ name: 'value', label, type: 'text', placeholder: 'Type here...' }],
+  }),
+};
+
+let questionCache = null;
+
+async function resolveFormConfig(componentType, label, description, options) {
+  if (!questionCache) {
+    const questionRepo = AppDataSource.getRepository('Question');
+    const allQuestions = await questionRepo.find();
+    questionCache = {};
+    for (const q of allQuestions) {
+      questionCache[q.form_component_type] = q;
+    }
+  }
+
+  const dbQuestion = questionCache[componentType];
+  if (dbQuestion) {
+    return buildFormFromQuestion(dbQuestion, label, description, options || []);
+  }
+
+  const builder = FALLBACK_BUILDERS[componentType] || FALLBACK_BUILDERS.text_input;
+  return builder(label || '', description || '', options || []);
+}
+
+const tools = [
+  {
+    type: 'function',
+    function: {
+      name: 'request_user_input',
+      description: 'Show a UI form to the user.',
+      parameters: {
+        type: 'object',
+        properties: {
+          component: { type: 'string' },
+          label: { type: 'string' },
+          description: { type: 'string' },
+          options: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['component', 'label'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_cars',
+      description: 'Search car database with filters.',
+      parameters: {
+        type: 'object',
+        properties: {
+          min_price: { type: 'number' },
+          max_price: { type: 'number' },
+          body_types: { type: 'array', items: { type: 'string' } },
+          fuel_types: { type: 'array', items: { type: 'string' } },
+          transmissions: { type: 'array', items: { type: 'string' } },
+          min_seating: { type: 'number' },
+          brands: { type: 'array', items: { type: 'string' } },
+          features: { type: 'array', items: { type: 'string' } },
+        },
+      },
+    },
+  },
+];
+
+function buildChatHistory(messages) {
+  const history = [];
+
+  for (const msg of messages) {
+    if (msg.role === 'system') continue;
+
+    const role = msg.role === 'assistant' ? 'assistant' : 'user';
+    let content = msg.content || '';
+
+    if (msg.message_type === 'form_request' && msg.form_config) {
+      content += ` [asked: ${msg.form_config.form_component_type || 'form'}]`;
+    }
+
+    if (msg.message_type === 'form_response' && msg.metadata?.answer_value) {
+      content = `[form answer: ${JSON.stringify(msg.metadata.answer_value)}]`;
+    }
+
+    if (!content.trim()) continue;
+    history.push({ role, content });
+  }
+
+  return history;
+}
+
+/**
+ * Standard HTTP POST request to Groq API with robust error handling and fallback
+ */
+async function callGroqAPI(messages, tools = null) {
+  const apiKey = process.env.GROQ_API_KEY;
+  const preferredModel = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
+
+  const payload = {
+    model: preferredModel,
+    messages,
+  };
+  if (tools) {
+    payload.tools = tools;
+  }
+
+  console.log(`Calling Groq API using model: ${payload.model}...`);
+
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    console.error('Groq API Error Response:', errorBody);
+
+    // Dynamic fallback to ensure 100% uptime in case the requested model is invalid or unauthorized
+    if (preferredModel === 'openai/gpt-oss-120b') {
+      console.warn('Requested model not available on Groq account. Falling back to llama-3.3-70b-versatile.');
+      payload.model = 'llama-3.3-70b-versatile';
+      const fallbackResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (fallbackResponse.ok) {
+        return await fallbackResponse.json();
+      }
+    }
+    throw new Error(`Groq API returned status ${response.status}: ${errorBody}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Process a message using Groq tool calling.
+ */
+async function processMessage(conversationHistory, userMessage, contextSummary = null) {
+  let systemPrompt = SYSTEM_PROMPT;
+  if (contextSummary) {
+    systemPrompt += `\n\nCONVERSATION CONTEXT:\n${contextSummary}\n\nDo not re-ask answered questions.`;
+  }
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...buildChatHistory(conversationHistory),
+    { role: 'user', content: userMessage }
+  ];
+
+  const responseJson = await callGroqAPI(messages, tools);
+  const choice = responseJson.choices?.[0];
+  const message = choice?.message;
+
+  if (message?.tool_calls?.[0]) {
+    const toolCall = message.tool_calls[0];
+    const functionName = toolCall.function.name;
+    const args = JSON.parse(toolCall.function.arguments || '{}');
+
+    // Handle form request
+    if (functionName === 'request_user_input') {
+      const componentType = args.component || 'text_input';
+      const formConfig = await resolveFormConfig(componentType, args.label, args.description, args.options);
+
+      return {
+        textContent: message.content || args.description || '',
+        formConfig,
+        functionCallName: 'request_user_input',
+      };
+    }
+
+    // Handle car search
+    if (functionName === 'search_cars') {
+      const carService = require('./carService');
+      const cars = await carService.searchCars(args);
+
+      const slimCars = cars.slice(0, 5).map((c) => ({
+        name: c.name, brand: c.brand, price: c.ex_showroom_price,
+        fuel: c.fuel_type, transmission: c.transmission, body: c.body_type,
+        mileage: c.mileage_kmpl, seating: c.seating_capacity,
+      }));
+
+      // Append assistant call & tool result in the history according to OpenAI spec
+      messages.push(message);
+      messages.push({
+        role: 'tool',
+        tool_call_id: toolCall.id,
+        name: 'search_cars',
+        content: JSON.stringify({ count: cars.length, cars: slimCars }),
+      });
+
+      const followUpJson = await callGroqAPI(messages, tools);
+      const followUpChoice = followUpJson.choices?.[0];
+      const followUpMessage = followUpChoice?.message;
+
+      if (followUpMessage?.tool_calls?.[0]) {
+        const followUpCall = followUpMessage.tool_calls[0];
+        if (followUpCall.function.name === 'request_user_input') {
+          const fArgs = JSON.parse(followUpCall.function.arguments || '{}');
+          const cType = fArgs.component || 'text_input';
+          const fConfig = await resolveFormConfig(cType, fArgs.label, fArgs.description, fArgs.options);
+          return {
+            textContent: followUpMessage.content || fArgs.description || '',
+            formConfig: fConfig,
+            functionCallName: 'request_user_input',
+          };
+        }
+      }
+
+      return {
+        textContent: followUpMessage?.content || 'Here are my recommendations.',
+        formConfig: null,
+        functionCallName: 'search_cars',
+        searchResults: cars.slice(0, 5),
+      };
+    }
+  }
+
+  return {
+    textContent: message?.content || 'Could you try again?',
+    formConfig: null,
+    functionCallName: null,
+  };
+}
+
+/**
+ * Summarize conversation messages for rolling context.
+ */
+async function summarizeConversation(messages, existingSummary = null) {
+  const transcript = messages
+    .map((m) => `${m.role}: ${m.content || '[form interaction]'}`)
+    .join('\n');
+
+  let prompt = 'Summarize this car-finding conversation concisely. Capture:\n';
+  prompt += '- User preferences (budget, car type, fuel, features, etc.)\n';
+  prompt += '- Decisions made so far\n';
+  prompt += '- What was about to happen next\n\n';
+
+  if (existingSummary) {
+    prompt += `Previous summary:\n${existingSummary}\n\nNew messages:\n`;
+  }
+
+  prompt += transcript;
+
+  const messagesToSend = [
+    { role: 'system', content: 'You are a helpful assistant.' },
+    { role: 'user', content: prompt }
+  ];
+
+  try {
+    const responseJson = await callGroqAPI(messagesToSend);
+    return responseJson.choices?.[0]?.message?.content || existingSummary || '';
+  } catch (err) {
+    console.error('Groq summarization failed:', err.message);
+    return existingSummary || '';
+  }
+}
+
+module.exports = { processMessage, summarizeConversation };
