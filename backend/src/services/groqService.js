@@ -216,6 +216,108 @@ async function callGroqAPI(messages, tools = null) {
 /**
  * Process a message using Groq tool calling.
  */
+/**
+ * Attempt to parse a tool call embedded as plain text inside brackets.
+ * Supports both full-width Chinese brackets 【...】 and standard brackets [...]
+ * Returns { name, args, cleanedText } if found, else null.
+ */
+function parseBracketedToolCall(text) {
+  if (!text) return null;
+  const bracketRegex = /(?:【|\[)(request_user_input|search_cars)\s*:\s*({.*?})(?:】|\])/;
+  const match = text.match(bracketRegex);
+  if (match) {
+    try {
+      const name = match[1];
+      const args = JSON.parse(match[2]);
+      const cleanedText = text.replace(bracketRegex, '').trim();
+      return { name, args, cleanedText };
+    } catch (e) {
+      console.error('Failed to parse bracketed tool arguments:', e);
+    }
+  }
+  return null;
+}
+
+/**
+ * Handle execution of tool calls (either native or bracket-parsed text fallbacks)
+ */
+async function handleToolCall(functionName, args, message, messages) {
+  // Handle form request
+  if (functionName === 'request_user_input') {
+    const componentType = args.component || 'text_input';
+    const formConfig = await resolveFormConfig(componentType, args.label, args.description, args.options);
+
+    return {
+      textContent: message.content || args.description || '',
+      formConfig,
+      functionCallName: 'request_user_input',
+    };
+  }
+
+  // Handle car search
+  if (functionName === 'search_cars') {
+    const carService = require('./carService');
+    const cars = await carService.searchCars(args);
+
+    const slimCars = cars.slice(0, 5).map((c) => ({
+      name: c.name, brand: c.brand, price: c.ex_showroom_price,
+      fuel: c.fuel_type, transmission: c.transmission, body: c.body_type,
+      mileage: c.mileage_kmpl, seating: c.seating_capacity,
+    }));
+
+    // Append tool interaction to history
+    messages.push(message);
+    messages.push({
+      role: 'tool',
+      tool_call_id: message.tool_calls?.[0]?.id || 'call_fake_search_' + Date.now(),
+      name: 'search_cars',
+      content: JSON.stringify({ count: cars.length, cars: slimCars }),
+    });
+
+    const followUpJson = await callGroqAPI(messages, tools);
+    const followUpChoice = followUpJson.choices?.[0];
+    const followUpMessage = followUpChoice?.message;
+    const followUpText = followUpMessage?.content || '';
+
+    // Check for native tool call in follow-up
+    if (followUpMessage?.tool_calls?.[0]) {
+      const followUpCall = followUpMessage.tool_calls[0];
+      if (followUpCall.function.name === 'request_user_input') {
+        const fArgs = JSON.parse(followUpCall.function.arguments || '{}');
+        const cType = fArgs.component || 'text_input';
+        const fConfig = await resolveFormConfig(cType, fArgs.label, fArgs.description, fArgs.options);
+        return {
+          textContent: followUpMessage.content || fArgs.description || '',
+          formConfig: fConfig,
+          functionCallName: 'request_user_input',
+        };
+      }
+    }
+
+    // Check for bracketed tool call in follow-up
+    const followUpBracketed = parseBracketedToolCall(followUpText);
+    if (followUpBracketed && followUpBracketed.name === 'request_user_input') {
+      const cType = followUpBracketed.args.component || 'text_input';
+      const fConfig = await resolveFormConfig(cType, followUpBracketed.args.label, followUpBracketed.args.description, followUpBracketed.args.options);
+      return {
+        textContent: followUpBracketed.cleanedText || followUpBracketed.args.description || '',
+        formConfig: fConfig,
+        functionCallName: 'request_user_input',
+      };
+    }
+
+    return {
+      textContent: followUpText || 'Here are my recommendations.',
+      formConfig: null,
+      functionCallName: 'search_cars',
+      searchResults: cars.slice(0, 5),
+    };
+  }
+}
+
+/**
+ * Process a message using Groq tool calling, supporting native tool calling and text bracket parser fallbacks.
+ */
 async function processMessage(conversationHistory, userMessage, contextSummary = null) {
   let systemPrompt = SYSTEM_PROMPT;
   if (contextSummary) {
@@ -231,73 +333,25 @@ async function processMessage(conversationHistory, userMessage, contextSummary =
   const responseJson = await callGroqAPI(messages, tools);
   const choice = responseJson.choices?.[0];
   const message = choice?.message;
+  const rawTextContent = message?.content || '';
 
+  // 1. Check for native tool calls
   if (message?.tool_calls?.[0]) {
     const toolCall = message.tool_calls[0];
     const functionName = toolCall.function.name;
     const args = JSON.parse(toolCall.function.arguments || '{}');
+    return await handleToolCall(functionName, args, message, messages);
+  }
 
-    // Handle form request
-    if (functionName === 'request_user_input') {
-      const componentType = args.component || 'text_input';
-      const formConfig = await resolveFormConfig(componentType, args.label, args.description, args.options);
-
-      return {
-        textContent: message.content || args.description || '',
-        formConfig,
-        functionCallName: 'request_user_input',
-      };
-    }
-
-    // Handle car search
-    if (functionName === 'search_cars') {
-      const carService = require('./carService');
-      const cars = await carService.searchCars(args);
-
-      const slimCars = cars.slice(0, 5).map((c) => ({
-        name: c.name, brand: c.brand, price: c.ex_showroom_price,
-        fuel: c.fuel_type, transmission: c.transmission, body: c.body_type,
-        mileage: c.mileage_kmpl, seating: c.seating_capacity,
-      }));
-
-      // Append assistant call & tool result in the history according to OpenAI spec
-      messages.push(message);
-      messages.push({
-        role: 'tool',
-        tool_call_id: toolCall.id,
-        name: 'search_cars',
-        content: JSON.stringify({ count: cars.length, cars: slimCars }),
-      });
-
-      const followUpJson = await callGroqAPI(messages, tools);
-      const followUpChoice = followUpJson.choices?.[0];
-      const followUpMessage = followUpChoice?.message;
-
-      if (followUpMessage?.tool_calls?.[0]) {
-        const followUpCall = followUpMessage.tool_calls[0];
-        if (followUpCall.function.name === 'request_user_input') {
-          const fArgs = JSON.parse(followUpCall.function.arguments || '{}');
-          const cType = fArgs.component || 'text_input';
-          const fConfig = await resolveFormConfig(cType, fArgs.label, fArgs.description, fArgs.options);
-          return {
-            textContent: followUpMessage.content || fArgs.description || '',
-            formConfig: fConfig,
-            functionCallName: 'request_user_input',
-          };
-        }
-      }
-
-      return {
-        textContent: followUpMessage?.content || 'Here are my recommendations.',
-        formConfig: null,
-        functionCallName: 'search_cars',
-        searchResults: cars.slice(0, 5),
-      };
-    }
+  // 2. Check for text-based bracketed tool calls (the fallback for custom models)
+  const bracketedCall = parseBracketedToolCall(rawTextContent);
+  if (bracketedCall) {
+    const fakeMessage = { ...message, content: bracketedCall.cleanedText };
+    return await handleToolCall(bracketedCall.name, bracketedCall.args, fakeMessage, messages);
   }
 
   return {
-    textContent: message?.content || 'Could you try again?',
+    textContent: rawTextContent || 'Could you try again?',
     formConfig: null,
     functionCallName: null,
   };
